@@ -63,4 +63,35 @@ type Mod {
       polyfill.workspace(ws).moduleSource(path).generate.changes
     }
   }
+
+  """
+  Disable legacy codegen at runtime for this module.
+
+  If the generate skip marker is present, the changeset is empty. Otherwise this
+  sets codegen.legacyCodegenAtRuntime to false in dagger.json, regenerates the
+  module, and returns both the config edit and the generated files.
+  """
+  pub enableNoCodegen(ws: Workspace!): Changeset! {
+    if (skipGenerate(ws)) {
+      polyfill.workspace(ws).fork.changes
+    } else {
+      let pws = polyfill.workspace(ws)
+      let configPath = if (path == ".") { "dagger.json" } else { path + "/dagger.json" }
+      let contents = ws.directory("/", include: [configPath]).file(configPath).contents
+      let updated = json()
+        .withContents(contents :: JSON!)
+        .withField(
+          ["codegen", "legacyCodegenAtRuntime"],
+          json().withContents(toJSON(false) :: JSON!),
+        )
+      # JSONValue.contents is a JSON scalar. toString encodes it as a JSON string
+      # literal, so decode once before writing it back as file contents.
+      let rendered = json().withContents(toString(updated.contents(pretty: true)) :: JSON!).asString + "\n"
+
+      pws.fork
+        .withNewFile(configPath, rendered)
+        .merge(pws.moduleSource(path).generate)
+        .changes
+    }
+  }
 }
