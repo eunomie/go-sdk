@@ -71,7 +71,7 @@ func GoTemplateFuncsForModule(
 		fullSchema:      fullSchema,
 		schemaVersion:   schemaVersion,
 		pass:            pass,
-	}.moduleFuncMap()
+	}.FuncMap()
 }
 
 // NewModuleIntrospectionEmitter constructs a minimal emitter suitable for
@@ -161,8 +161,10 @@ func (funcs goTemplateFuncs) FuncMap() template.FuncMap {
 		"IsPointer":               funcs.isPointer,
 		"FormatArrayField":        funcs.formatArrayField,
 		"FormatArrayToSingleType": funcs.formatArrayToSingleType,
+		"IsPartial":               funcs.isPartial,
 		"IsModuleCode":            funcs.isModuleCode,
 		"IsStandaloneClient":      funcs.isStandaloneClient,
+		"ModuleMainSrc":           funcs.moduleMainSrc,
 		"ModuleRelPath":           funcs.moduleRelPath,
 		"BoundModule":             funcs.boundModule,
 		"IsExtendableType":        funcs.isExtendableType,
@@ -173,33 +175,10 @@ func (funcs goTemplateFuncs) FuncMap() template.FuncMap {
 	}
 }
 
-// moduleFuncMap extends the base (client) FuncMap with the helpers only the
-// module templates call, so the client FuncMap stays exactly as it was.
-func (funcs goTemplateFuncs) moduleFuncMap() template.FuncMap {
-	fm := funcs.FuncMap()
-	fm["IsPartial"] = funcs.isPartial
-	fm["ModuleMainSrc"] = funcs.moduleMainSrc
-	return fm
-}
-
 // isPartial reports whether this is a first (bootstrap) pass, before the
 // module's own source has been loaded.
 func (funcs goTemplateFuncs) isPartial() bool {
 	return funcs.pass == 0
-}
-
-// moduleMainSrc renders the module's invoke() dispatch main from the parsed
-// module package. Transient stub, real impl in Task 3 (templates/modules.go);
-// no module generation runs until the module templates land, so this is
-// never reached before then.
-func (funcs goTemplateFuncs) moduleMainSrc() (string, error) {
-	panic("moduleMainSrc: not yet ported — Task 3")
-}
-
-// ModuleIntrospectionJSON emits the module's own types as introspection JSON.
-// Transient stub, real impl in Task 3 (templates/introspect_emit.go).
-func (funcs goTemplateFuncs) ModuleIntrospectionJSON(moduleName string) ([]byte, error) {
-	panic("ModuleIntrospectionJSON: not yet ported — Task 3")
 }
 
 // legacyGoSDKCompatCutoverVersion is the first engine version whose Go SDK

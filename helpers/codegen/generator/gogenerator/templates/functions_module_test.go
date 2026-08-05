@@ -20,13 +20,18 @@ func TestGoTemplateFuncsForModuleHasModuleEntries(t *testing.T) {
 	}
 }
 
-// The client FuncMap must not gain module-only entries: keeping the client
-// path unchanged is the point of splitting the constructors.
-func TestGoTemplateFuncsClientHasNoModuleMain(t *testing.T) {
+// The client and module FuncMaps expose the same keys: the whole template
+// tree (client + module templates) is parsed against one FuncMap, and
+// text/template resolves every referenced function at parse time. Client
+// safety comes from the IsModuleCode guards and a nil modulePkg, not from a
+// narrower map. This test pins that the module keys stay present on the client
+// FuncMap so the shared parse keeps working.
+func TestClientFuncMapCarriesModuleKeysForSharedParse(t *testing.T) {
 	schema := &introspection.Schema{}
 	fm := GoTemplateFuncs(schema, schema, "v0.12.0", generator.Config{})
-	require.Contains(t, fm, "BoundModule")
-	require.NotContains(t, fm, "ModuleMainSrc", "client FuncMap must not gain the module dispatch helper")
+	for _, name := range []string{"BoundModule", "IsPartial", "ModuleMainSrc"} {
+		require.Contains(t, fm, name, "client FuncMap must expose %s for the shared template parse", name)
+	}
 }
 
 // isPartial keys off the pass index: pass 0 is the bootstrap pass.
