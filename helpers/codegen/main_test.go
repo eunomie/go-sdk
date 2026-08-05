@@ -1,10 +1,36 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"codegen/generator"
 )
+
+func TestModuleFlagsConfigRequiresNameAndSource(t *testing.T) {
+	if _, err := (&moduleFlags{sourcePath: "."}).config(); err == nil {
+		t.Fatal("expected error when --module-name is missing")
+	}
+	if _, err := (&moduleFlags{name: "app"}).config(); err == nil {
+		t.Fatal("expected error when --module-source-path is missing")
+	}
+	cfg, err := (&moduleFlags{name: "app", sourcePath: ".", libVersion: "v1.2.3"}).config()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ModuleConfig == nil || cfg.ModuleConfig.ModuleName != "app" || cfg.ModuleConfig.LibVersion != "v1.2.3" {
+		t.Fatalf("config not populated: %+v", cfg.ModuleConfig)
+	}
+}
+
+func TestRunUnknownCommand(t *testing.T) {
+	if err := runGenerateModule(context.Background(), []string{"--module-name", "app"}); err == nil {
+		t.Fatal("expected error: --module-source-path is required")
+	}
+	if err := runModuleTypes(context.Background(), []string{"--module-name", "app", "--module-source-path", "."}); err == nil {
+		t.Fatal("expected error: --module-types-out is required")
+	}
+}
 
 func TestValidateBoundModuleKind(t *testing.T) {
 	tests := []struct {
