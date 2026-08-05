@@ -29,6 +29,23 @@ type ModuleGeneratorConfig struct {
 
 	// ModuleParentPath is the path from the module source subpath to the context directory
 	ModuleParentPath string
+
+	// IsInit is true when generating for `dagger module init`: the go.mod path
+	// is checked against the expected module name and no starter main.go is
+	// scaffolded (the SDK's initModule owns the starter source).
+	IsInit bool
+
+	// LibVersion pins dagger.io/dagger in the generated module's go.mod
+	// (`go get dagger.io/dagger@<LibVersion>`).
+	LibVersion string
+
+	// SDKGoMod and SDKGoSum are the go.mod / go.sum of the dagger.io/dagger Go
+	// library, used to pin the generated module's shared dependency versions
+	// and carry the library's replace directives. They are supplied as inputs
+	// (from the pinned sdk/go) rather than embedded, so the pin lives with the
+	// SDK module, not in this binary.
+	SDKGoMod []byte
+	SDKGoSum []byte
 }
 
 // Module-source kinds a generated client can bind to. A local module
