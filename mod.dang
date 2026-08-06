@@ -67,7 +67,7 @@ type Mod {
       let stagedWs = ws.withChanges(
         polyfill.workspace(ws).moduleSource("/" + rootPath).core.generateLocalDependencies(ws),
       )
-      polyfill.workspace(stagedWs).moduleSource("/" + rootPath).generate
+      moduleChangeset(stagedWs, rootPath)
     }
   }
 }

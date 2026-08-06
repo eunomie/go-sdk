@@ -202,6 +202,15 @@ func (g *GoGenerator) bootstrapMod(mfs *memfs.FS, genSt *generator.GeneratedStat
 		return nil, false, fmt.Errorf("existing go.mod has unsupported version %v (highest supported version is %v)", goMod.Go.Version, goVersion)
 	}
 
+	// Pin dagger.io/dagger to a local sdk/go via a replace directive when
+	// requested, so the module builds without a published library version.
+	// Added before syncModReplaceAndTidy so it suppresses the `go get`.
+	if replace := moduleConfig.DaggerLibReplace; replace != "" && !isDaggerPkgCustomReplaced(goMod.Replace) {
+		if err := goMod.AddReplace(daggerImportPath, "", replace, ""); err != nil {
+			return nil, false, fmt.Errorf("add dagger.io/dagger replace: %w", err)
+		}
+	}
+
 	if err := g.syncModReplaceAndTidy(goMod, genSt, daggerModPath); err != nil {
 		return nil, false, err
 	}

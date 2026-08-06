@@ -320,20 +320,6 @@ type GoSdk {
   }
 
   """
-  Build the engine-free client codegen helper.
-  """
-  let codegenBuilder: Container! {
-    container
-      .from("golang:1.25-alpine")
-      .withoutEntrypoint
-      .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
-      .withMountedCache("/root/.cache/go-build", cacheVolume("go-build"))
-      .withDirectory("/helper", currentModule.source.directory("helpers/codegen"))
-      .withWorkdir("/helper")
-      .withExec(["go", "build", "-o", "/usr/local/bin/codegen", "."])
-  }
-
-  """
   Serialize the bound-module provenance the codegen helper embeds in the
   generated serve bootstrap.
   """
@@ -490,8 +476,122 @@ type GoSdk {
           let stagedWs = ws.withChanges(
             pws.moduleSource("/" + mod.rootPath).core.generateLocalDependencies(ws),
           )
-          polyfill.workspace(stagedWs).moduleSource("/" + mod.rootPath).generate
+          moduleChangeset(stagedWs, mod.rootPath)
         },
     )
   }
+}
+
+"""
+Build the engine-free codegen helper binary (shared by client and module
+generation).
+"""
+let codegenBuilder: Container! {
+  container
+    .from("golang:1.25-alpine")
+    .withoutEntrypoint
+    # git/openssh are needed by module generation's `go get` / `go mod tidy`,
+    # which fetch dagger.io/dagger over VCS.
+    .withExec(["apk", "add", "--no-cache", "git", "openssh"])
+    .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
+    .withMountedCache("/root/.cache/go-build", cacheVolume("go-build"))
+    .withDirectory("/helper", currentModule.source.directory("helpers/codegen"))
+    .withWorkdir("/helper")
+    .withExec(["go", "build", "-o", "/usr/local/bin/codegen", "."])
+}
+
+"""
+Pinned dagger/dagger commit whose sdk/go supplies the dagger.io/dagger library
+that generated modules build against — the go-sdk analogue of the engine's
+goSDKLibVersion. Generated modules replace dagger.io/dagger with this tree, so
+they build without a published library version. Bump to track main.
+"""
+let daggerLibVersion: String! = "3e6f3215788362eb45f4fd7540103007cbf52e27"
+
+"""
+The dagger.io/dagger Go library source (sdk/go) at the pinned commit.
+"""
+let daggerLibSource: Directory! {
+  git("https://github.com/dagger/dagger").commit(daggerLibVersion).tree.directory("sdk/go")
+}
+
+"""
+Existing source of the module rooted at `path`, used as the codegen input (its
+user files are preserved; the generated files overlay it).
+"""
+let moduleSourceDir(ws: Workspace!, path: String!): Directory! {
+  let filtered = ws.directory("/", include: [path + "/**"])
+  if (filtered.exists(path)) {
+    filtered.directory(path)
+  } else {
+    directory
+  }
+}
+
+"""
+Run module codegen: the module's dependency-facing schema plus its source in,
+the generated module out. The module's own types are emitted from its source
+(engine-free), merged into the deps schema via the engine's schema().merge(),
+then the bindings are rendered from the merged schema — so the codegen helper
+never opens an engine session.
+"""
+let moduleDirectory(
+  depsSchemaJSON: String!,
+  moduleName: String!,
+  libVersion: String!,
+  source: Directory!,
+): Directory! {
+  # Pass A: bootstrap the module (go.mod with a local dagger.io/dagger replace,
+  # a base dagger.gen.go, go mod tidy) and emit its own types as introspection
+  # JSON. sdk/go is mounted so the replace resolves without the network.
+  let bootstrapped = codegenBuilder
+    .withMountedDirectory("/dagger-sdk", daggerLibSource)
+    .withNewFile("/deps.json", depsSchemaJSON)
+    .withDirectory("/out", source)
+    .withExec([
+      "codegen", "module-types",
+      "--introspection-json-path", "/deps.json",
+      "--output", "/out",
+      "--module-source-path", ".",
+      "--module-name", moduleName,
+      "--lib-version", libVersion,
+      "--dagger-lib-replace", "/dagger-sdk",
+      "--module-types-out", "/types.json",
+    ])
+  # Merge (engine): the module's own types into the deps schema. The JSON
+  # scalar carries the raw introspection text, so ascribe the String rather
+  # than decoding it into a value.
+  let mergedJSON = schema(json: depsSchemaJSON :: Dagger.JSON!)
+    .merge(moduleTypes: bootstrapped.file("/types.json").contents :: Dagger.JSON!, moduleName: moduleName)
+    .contents
+  # Pass B: render the bindings from the merged schema, reusing the
+  # already-bootstrapped /out so the module is only loaded once more.
+  bootstrapped
+    .withNewFile("/merged.json", toString(mergedJSON))
+    .withExec([
+      "codegen", "generate-module",
+      "--introspection-json-path", "/merged.json",
+      "--output", "/out",
+      "--module-source-path", ".",
+      "--module-name", moduleName,
+      "--lib-version", libVersion,
+      "--dagger-lib-replace", "/dagger-sdk",
+    ])
+    .directory("/out")
+}
+
+"""
+Generate the Go bindings for the module rooted at `rootPath` and return the
+changeset against the workspace.
+"""
+let moduleChangeset(ws: Workspace!, rootPath: String!): Changeset! {
+  let pws = polyfill.workspace(ws)
+  let modSrc = pws.moduleSource("/" + rootPath).core
+  let generated = moduleDirectory(
+    modSrc.introspectionSchemaJSON.contents,
+    modSrc.moduleOriginalName,
+    modSrc.engineVersion,
+    moduleSourceDir(ws, rootPath),
+  )
+  pws.fork.withDirectory(rootPath, generated).changes
 }
