@@ -616,6 +616,33 @@ type E2e {
   }
 
   """
+  A generated module must compile. Generation already type-checks the module,
+  but a real `go build` catches binding, dispatch and go.mod bugs that
+  file-presence checks miss. The generated go.mod pins dagger.io/dagger to
+  /dagger-sdk (a mounted sdk/go), so mount it there and build.
+  """
+  moduleCompilesCheck(ws: Workspace!): Void @check {
+    # .after (not .layer): the module compiles only with the user's own source
+    # (main.go) alongside the generated files, which the layer alone omits.
+    let changes = goSdk.mod(ws, path: generateModulePath).generate(ws)
+    let moduleDir = changes.after.directory(generateModulePath)
+
+    let out = container
+      .from("golang:1.26-alpine")
+      .withoutEntrypoint
+      .withExec(["apk", "add", "--no-cache", "git", "openssh"])
+      .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
+      .withMountedCache("/root/.cache/go-build", cacheVolume("go-build"))
+      .withDirectory("/dagger-sdk", git("https://github.com/dagger/dagger").commit(daggerSourceRef).tree.directory("sdk/go"))
+      .withDirectory("/module", moduleDir)
+      .withWorkdir("/module")
+      .withExec(["go", "build", "./..."])
+      .stdout
+
+    null
+  }
+
+  """
   The codegen helper must pass its own unit + golden tests. Runs `go test` in
   a container so `dagger check` covers the codegen logic, not just its
   end-to-end output.

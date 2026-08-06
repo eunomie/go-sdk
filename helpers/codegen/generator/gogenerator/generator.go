@@ -181,7 +181,16 @@ func generateDependencyFiles(
 		}
 
 		// Convert module name to kebab-case for the filename, e.g. "myDep" -> "my-dep.gen.go"
-		depFilePath := strcase.ToKebab(depName) + ".gen.go"
+		depFileName := strcase.ToKebab(depName) + ".gen.go"
+
+		// A standalone client's root package is "dagger", so its per-module
+		// files live at the client root. A generated module's root is package
+		// main, so its binding files go under internal/dagger (package dagger)
+		// to avoid two packages in one directory.
+		depFilePath := depFileName
+		if cfg.ModuleConfig != nil {
+			depFilePath = filepath.Join(internalDaggerDir, depFileName)
+		}
 
 		if err := mfs.WriteFile(depFilePath, dt, 0600); err != nil {
 			return fmt.Errorf("write dependency file %q: %w", depFilePath, err)
