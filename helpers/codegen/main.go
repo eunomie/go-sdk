@@ -13,7 +13,7 @@
 //	    generate a standalone Go client (default, no subcommand)
 //	codegen generate-module --introspection-json-path P --output D \
 //	    --module-source-path S --module-name N [--module-parent-path P] \
-//	    [--is-init] --lib-version V --sdk-gomod-path P --sdk-gosum-path P
+//	    --lib-version V --sdk-gomod-path P --sdk-gosum-path P
 //	    generate a Go module's dagger.gen.go from the merged schema
 //	codegen module-types --introspection-json-path P --output D \
 //	    --module-source-path S --module-name N [--module-parent-path P] \
@@ -145,7 +145,6 @@ type moduleFlags struct {
 	sourcePath        string
 	parentPath        string
 	name              string
-	isInit            bool
 	libVersion        string
 	sdkGoModPath      string
 	sdkGoSumPath      string
@@ -157,7 +156,6 @@ func (mf *moduleFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&mf.sourcePath, "module-source-path", "", "output-relative path to the module source")
 	fs.StringVar(&mf.parentPath, "module-parent-path", "", "module-source-relative path to the context directory")
 	fs.StringVar(&mf.name, "module-name", "", "name of the module to generate code for")
-	fs.BoolVar(&mf.isInit, "is-init", false, "whether this is initializing a new module")
 	fs.StringVar(&mf.libVersion, "lib-version", "", "dagger.io/dagger version to pin in the generated go.mod")
 	fs.StringVar(&mf.sdkGoModPath, "sdk-gomod-path", "", "path to the dagger.io/dagger library go.mod")
 	fs.StringVar(&mf.sdkGoSumPath, "sdk-gosum-path", "", "path to the dagger.io/dagger library go.sum")
@@ -191,7 +189,6 @@ func (mf *moduleFlags) config() (generator.Config, error) {
 			ModuleName:       mf.name,
 			ModuleSourcePath: mf.sourcePath,
 			ModuleParentPath: mf.parentPath,
-			IsInit:           mf.isInit,
 			LibVersion:       mf.libVersion,
 			SDKGoMod:         sdkGoMod,
 			SDKGoSum:         sdkGoSum,

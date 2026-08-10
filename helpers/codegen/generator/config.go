@@ -30,11 +30,6 @@ type ModuleGeneratorConfig struct {
 	// ModuleParentPath is the path from the module source subpath to the context directory
 	ModuleParentPath string
 
-	// IsInit is true when generating for `dagger module init`: the go.mod path
-	// is checked against the expected module name and no starter main.go is
-	// scaffolded (the SDK's initModule owns the starter source).
-	IsInit bool
-
 	// LibVersion pins dagger.io/dagger in the generated module's go.mod
 	// (`go get dagger.io/dagger@<LibVersion>`).
 	LibVersion string

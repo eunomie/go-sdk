@@ -27,9 +27,6 @@ const (
 	// ClientGenFile is the path to write the codegen for the dagger API
 	ClientGenFile = "dagger.gen.go"
 
-	// StarterTemplateFile is the path to write the default module code
-	StarterTemplateFile = "main.go"
-
 	// internalDaggerDir is the directory where internal dagger generated files are written.
 	internalDaggerDir = "internal/dagger"
 )

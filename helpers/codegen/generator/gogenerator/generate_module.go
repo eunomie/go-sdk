@@ -103,10 +103,14 @@ func (g *GoGenerator) GenerateModuleTypes(ctx context.Context, schema *introspec
 	return genSt, typesJSON, nil
 }
 
-// bootstrapModule writes go.mod (and, for a fresh module, a base dagger.gen.go
-// and a starter main.go) into the overlay, returning the module output subpath
-// and whether another pass is needed before the module can be loaded. When
-// partial is false the module at outDir is loadable.
+// bootstrapModule writes go.mod (and, for a fresh module, a base dagger.gen.go)
+// into the overlay, returning the module output subpath and whether another
+// pass is needed before the module can be loaded. When partial is false the
+// module at outDir is loadable.
+//
+// It does not scaffold a starter main.go: initializing a new module is the
+// SDK's initModule job, and generate only runs on already-initialized modules.
+// An uninitialized module (no .go files) fails to load, as it should.
 func (g *GoGenerator) bootstrapModule(ctx context.Context, schema *introspection.Schema, schemaVersion string) (_ *memfs.FS, _ *PackageInfo, outDir string, _ *generator.GeneratedState, partial bool, _ error) {
 	if g.Config.ModuleConfig == nil {
 		return nil, nil, "", nil, false, fmt.Errorf("GenerateModule called but module config is missing")
@@ -138,35 +142,17 @@ func (g *GoGenerator) bootstrapModule(ctx context.Context, schema *introspection
 		mfs = sub.(*memfs.FS)
 	}
 
-	initialGoFiles, err := filepath.Glob(filepath.Join(g.Config.OutputDir, outDir, "*.go"))
-	if err != nil {
-		return nil, nil, "", nil, false, fmt.Errorf("glob go files: %w", err)
-	}
-
 	genFile := filepath.Join(g.Config.OutputDir, outDir, ClientGenFile)
 	if _, err := os.Stat(genFile); err != nil {
 		// assume package main, default for modules
 		pkgInfo.PackageName = "main"
 
-		// generate an initial dagger.gen.go from the base Dagger API
+		// generate an initial dagger.gen.go from the base Dagger API so the
+		// module's own source can type-check against internal/dagger on the
+		// next pass
 		if err := generateCode(ctx, g.Config, schema, schemaVersion, mfs, pkgInfo, &moduleGenCtx{pass: 0}); err != nil {
 			return nil, nil, "", nil, false, fmt.Errorf("generate code: %w", err)
 		}
-		partial = true
-	}
-
-	if len(initialGoFiles) == 0 && !moduleConfig.IsInit {
-		// write an initial main.go if no main pkg exists yet
-		//
-		// Skipped at module-init time: the SDK that drives `dagger module init`
-		// owns the starter source via its `initModule` Changeset, and the engine
-		// merges that with this generated context. Scaffolding a main.go here too
-		// would make both changesets add the same path and the merge would fail
-		// with "path added in both changesets".
-		if err := mfs.WriteFile(StarterTemplateFile, []byte(baseModuleSource(pkgInfo, moduleConfig.ModuleName)), 0600); err != nil {
-			return nil, nil, "", nil, false, err
-		}
-		// main.go is actually an input to codegen, so this requires another pass
 		partial = true
 	}
 
@@ -188,10 +174,6 @@ func (g *GoGenerator) bootstrapMod(mfs *memfs.FS, genSt *generator.GeneratedStat
 		goMod, err = modfile.ParseLax("go.mod", content, nil)
 		if err != nil {
 			return nil, false, fmt.Errorf("parse go.mod: %w", err)
-		}
-
-		if moduleConfig.IsInit && goMod.Module.Mod.Path != modname {
-			return nil, false, fmt.Errorf("existing go.mod path %q does not match the module's name %q", goMod.Module.Mod.Path, modname)
 		}
 	}
 
@@ -324,49 +306,6 @@ func (g *GoGenerator) syncModReplaceAndTidy(mod *modfile.File, genSt *generator.
 	}
 
 	return nil
-}
-
-func baseModuleSource(pkgInfo *PackageInfo, moduleName string) string {
-	moduleStructName := strcase.ToCamel(moduleName)
-
-	return fmt.Sprintf(`// A generated module for %[1]s functions
-//
-// This module has been generated via dagger module init and serves as a reference to
-// basic module structure as you get started with Dagger.
-//
-// Two functions have been pre-created. You can modify, delete, or add to them,
-// as needed. They demonstrate usage of arguments and return types using simple
-// echo and grep commands. The functions can be called from the dagger CLI or
-// from one of the SDKs.
-//
-// The first line in this comment block is a short description line and the
-// rest is a long description with more detail on the module's purpose or usage,
-// if appropriate. All modules should have a short description.
-
-package main
-
-import (
-	"context"
-	"%[2]s/internal/dagger"
-)
-
-type %[1]s struct{}
-
-// Returns a container that echoes whatever string argument is provided
-func (m *%[1]s) ContainerEcho(stringArg string) *dagger.Container {
-	return dag.Container().From("alpine:latest").WithExec([]string{"echo", stringArg})
-}
-
-// Returns lines that match a pattern in the files of the provided Directory
-func (m *%[1]s) GrepDir(ctx context.Context, directoryArg *dagger.Directory, pattern string) (string, error) {
-	return dag.Container().
-		From("alpine:latest").
-		WithMountedDirectory("/mnt", directoryArg).
-		WithWorkdir("/mnt").
-		WithExec([]string{"grep", "-R", pattern, "."}).
-		Stdout(ctx)
-}
-`, moduleStructName, pkgInfo.PackageImport)
 }
 
 func goEnv(dir string, env string) (string, error) {
