@@ -149,7 +149,6 @@ type moduleFlags struct {
 	libVersion        string
 	sdkGoModPath      string
 	sdkGoSumPath      string
-	daggerLibReplace  string
 }
 
 func (mf *moduleFlags) bind(fs *flag.FlagSet) {
@@ -162,7 +161,6 @@ func (mf *moduleFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&mf.libVersion, "lib-version", "", "dagger.io/dagger version to pin in the generated go.mod")
 	fs.StringVar(&mf.sdkGoModPath, "sdk-gomod-path", "", "path to the dagger.io/dagger library go.mod")
 	fs.StringVar(&mf.sdkGoSumPath, "sdk-gosum-path", "", "path to the dagger.io/dagger library go.sum")
-	fs.StringVar(&mf.daggerLibReplace, "dagger-lib-replace", "", "if set, replace dagger.io/dagger with this local path in the generated go.mod")
 }
 
 func (mf *moduleFlags) config() (generator.Config, error) {
@@ -197,7 +195,6 @@ func (mf *moduleFlags) config() (generator.Config, error) {
 			LibVersion:       mf.libVersion,
 			SDKGoMod:         sdkGoMod,
 			SDKGoSum:         sdkGoSum,
-			DaggerLibReplace: mf.daggerLibReplace,
 		},
 	}, nil
 }

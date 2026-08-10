@@ -616,24 +616,32 @@ type E2e {
   }
 
   """
-  A generated module must compile. Generation already type-checks the module,
-  but a real `go build` catches binding, dispatch and go.mod bugs that
-  file-presence checks miss. The generated go.mod pins dagger.io/dagger to
-  /dagger-sdk (a mounted sdk/go), so mount it there and build.
+  A generated module must compile the way a user's would: a normal `go build`
+  with a plain `go get` of the pinned dagger.io/dagger, no local replace. This
+  catches binding/dispatch/go.mod bugs that file-presence checks miss and proves
+  the generated go.mod is portable — the same behavior as the engine's output.
   """
   moduleCompilesCheck(ws: Workspace!): Void @check {
     # .after (not .layer): the module compiles only with the user's own source
     # (main.go) alongside the generated files, which the layer alone omits.
     let changes = goSdk.mod(ws, path: generateModulePath).generate(ws)
-    let moduleDir = changes.after.directory(generateModulePath)
 
+    # The generated go.mod must be portable: no local-path replace that only
+    # resolves inside the codegen container. The `go build` below (plain
+    # go get, no mounted sdk) is the real portability proof.
+    let gomod = changes.after.file(generateModulePath + "/go.mod").contents
+    assert(
+      gomod.contains("=> /") == false,
+      "generated go.mod must not pin a dependency to a local absolute path",
+    )
+
+    let moduleDir = changes.after.directory(generateModulePath)
     let out = container
       .from("golang:1.26-alpine")
       .withoutEntrypoint
       .withExec(["apk", "add", "--no-cache", "git", "openssh"])
       .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
       .withMountedCache("/root/.cache/go-build", cacheVolume("go-build"))
-      .withDirectory("/dagger-sdk", git("https://github.com/dagger/dagger").commit(daggerSourceRef).tree.directory("sdk/go"))
       .withDirectory("/module", moduleDir)
       .withWorkdir("/module")
       .withExec(["go", "build", "./..."])

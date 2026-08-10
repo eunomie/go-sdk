@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/dschmidt/go-layerfs"
@@ -66,6 +67,20 @@ func (g *GoGenerator) GenerateModule(ctx context.Context, schema *introspection.
 // returned state carries NeedRegenerate and the module-types JSON is nil; the
 // caller writes the overlay, runs the post-commands and calls again.
 func (g *GoGenerator) GenerateModuleTypes(ctx context.Context, schema *introspection.Schema, schemaVersion string) (*generator.GeneratedState, []byte, error) {
+	// The caller merges the emitted types into this (dependency) schema, keyed
+	// on the module name. A dependency installed under the module's own name
+	// would make that merge a silent no-op — the module's types would never
+	// enter the schema. Refuse it with an actionable error, as the engine does.
+	if g.Config.ModuleConfig != nil {
+		moduleName := g.Config.ModuleConfig.ModuleName
+		if slices.Contains(schema.DependencyNames(), moduleName) {
+			return nil, nil, fmt.Errorf(
+				"a dependency is installed under the module's own name %q; "+
+					"self-calls need distinct names — reinstall the dependency under "+
+					"another name (dagger install --name)", moduleName)
+		}
+	}
+
 	_, _, outDir, genSt, partial, err := g.bootstrapModule(ctx, schema, schemaVersion)
 	if err != nil {
 		return nil, nil, err
@@ -200,15 +215,6 @@ func (g *GoGenerator) bootstrapMod(mfs *memfs.FS, genSt *generator.GeneratedStat
 	}
 	if semver.Compare("v"+goMod.Go.Version, "v"+goVersion) > 0 {
 		return nil, false, fmt.Errorf("existing go.mod has unsupported version %v (highest supported version is %v)", goMod.Go.Version, goVersion)
-	}
-
-	// Pin dagger.io/dagger to a local sdk/go via a replace directive when
-	// requested, so the module builds without a published library version.
-	// Added before syncModReplaceAndTidy so it suppresses the `go get`.
-	if replace := moduleConfig.DaggerLibReplace; replace != "" && !isDaggerPkgCustomReplaced(goMod.Replace) {
-		if err := goMod.AddReplace(daggerImportPath, "", replace, ""); err != nil {
-			return nil, false, fmt.Errorf("add dagger.io/dagger replace: %w", err)
-		}
 	}
 
 	if err := g.syncModReplaceAndTidy(goMod, genSt, daggerModPath); err != nil {

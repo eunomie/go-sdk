@@ -46,13 +46,6 @@ type ModuleGeneratorConfig struct {
 	// SDK module, not in this binary.
 	SDKGoMod []byte
 	SDKGoSum []byte
-
-	// DaggerLibReplace, when set, adds a `replace dagger.io/dagger => <path>`
-	// directive to the generated go.mod so the module resolves the library
-	// from a local path (a mounted sdk/go) instead of fetching it over the
-	// network. This also suppresses the `go get dagger.io/dagger@LibVersion`
-	// step. It is the go-sdk analogue of the engine's goSDKLibVersion pin.
-	DaggerLibReplace string
 }
 
 // Module-source kinds a generated client can bind to. A local module

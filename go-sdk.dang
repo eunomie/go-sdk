@@ -488,7 +488,9 @@ generation).
 """
 let codegenBuilder: Container! {
   container
-    .from("golang:1.25-alpine")
+    # 1.26: the pinned dagger.io/dagger (goSDKLibVersion) requires go >= 1.26.1,
+    # and generated modules must build against it.
+    .from("golang:1.26-alpine")
     .withoutEntrypoint
     # git/openssh are needed by module generation's `go get` / `go mod tidy`,
     # which fetch dagger.io/dagger over VCS.
@@ -501,31 +503,28 @@ let codegenBuilder: Container! {
 }
 
 """
-Pinned dagger/dagger commit whose sdk/go supplies the dagger.io/dagger library
-that generated modules build against — the go-sdk analogue of the engine's
-goSDKLibVersion. Generated modules replace dagger.io/dagger with this tree, so
-they build without a published library version. Bump to track main.
+dagger.io/dagger library version pinned into generated modules' go.mod — the
+go-sdk analogue of the engine's goSDKLibVersion. A dagger-go-sdk commit that
+`go get dagger.io/dagger@<this>` resolves to a real, portable version, so a
+generated module builds the same on a user's machine as it does here. Bump to
+track main.
 """
-let daggerLibVersion: String! = "3e6f3215788362eb45f4fd7540103007cbf52e27"
-
-"""
-The dagger.io/dagger Go library source (sdk/go) at the pinned commit.
-"""
-let daggerLibSource: Directory! {
-  git("https://github.com/dagger/dagger").commit(daggerLibVersion).tree.directory("sdk/go")
-}
+let goSDKLibVersion: String! = "1309520660f6a5b35ef97b4fbe151e32a06a8dc5"
 
 """
 Existing source of the module rooted at `path`, used as the codegen input (its
-user files are preserved; the generated files overlay it).
+user files are preserved; the generated files overlay it). The stale
+dagger.gen.go is dropped so codegen regenerates it fresh, mirroring the
+engine's withoutFile before codegen.
 """
 let moduleSourceDir(ws: Workspace!, path: String!): Directory! {
   let filtered = ws.directory("/", include: [path + "/**"])
-  if (filtered.exists(path)) {
+  let dir = if (filtered.exists(path)) {
     filtered.directory(path)
   } else {
     directory
   }
+  dir.withoutFile("dagger.gen.go")
 }
 
 """
@@ -533,19 +532,18 @@ Run module codegen: the module's dependency-facing schema plus its source in,
 the generated module out. The module's own types are emitted from its source
 (engine-free), merged into the deps schema via the engine's schema().merge(),
 then the bindings are rendered from the merged schema — so the codegen helper
-never opens an engine session.
+never opens an engine session. dagger.io/dagger is pinned to goSDKLibVersion and
+fetched with `go get`, exactly like the engine, so the generated go.mod is
+portable (a real require, no local replace).
 """
 let moduleDirectory(
   depsSchemaJSON: String!,
   moduleName: String!,
-  libVersion: String!,
   source: Directory!,
 ): Directory! {
-  # Pass A: bootstrap the module (go.mod with a local dagger.io/dagger replace,
-  # a base dagger.gen.go, go mod tidy) and emit its own types as introspection
-  # JSON. sdk/go is mounted so the replace resolves without the network.
+  # Pass A: bootstrap the module (go.mod, a base dagger.gen.go, go get + go mod
+  # tidy) and emit its own types as introspection JSON.
   let bootstrapped = codegenBuilder
-    .withMountedDirectory("/dagger-sdk", daggerLibSource)
     .withNewFile("/deps.json", depsSchemaJSON)
     .withDirectory("/out", source)
     .withExec([
@@ -554,8 +552,7 @@ let moduleDirectory(
       "--output", "/out",
       "--module-source-path", ".",
       "--module-name", moduleName,
-      "--lib-version", libVersion,
-      "--dagger-lib-replace", "/dagger-sdk",
+      "--lib-version", goSDKLibVersion,
       "--module-types-out", "/types.json",
     ])
   # Merge (engine): the module's own types into the deps schema. The JSON
@@ -574,8 +571,7 @@ let moduleDirectory(
       "--output", "/out",
       "--module-source-path", ".",
       "--module-name", moduleName,
-      "--lib-version", libVersion,
-      "--dagger-lib-replace", "/dagger-sdk",
+      "--lib-version", goSDKLibVersion,
     ])
     .directory("/out")
 }
@@ -590,7 +586,6 @@ let moduleChangeset(ws: Workspace!, rootPath: String!): Changeset! {
   let generated = moduleDirectory(
     modSrc.introspectionSchemaJSON.contents,
     modSrc.moduleOriginalName,
-    modSrc.engineVersion,
     moduleSourceDir(ws, rootPath),
   )
   pws.fork.withDirectory(rootPath, generated).changes
