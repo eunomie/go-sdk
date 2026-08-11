@@ -203,13 +203,11 @@ func (g *GoGenerator) bootstrapMod(mfs *memfs.FS, genSt *generator.GeneratedStat
 		return nil, false, err
 	}
 
-	// try and find a go.sum next to the go.mod, and use that to pin
+	// preserve any existing go.sum next to the go.mod; `go mod tidy` completes it
 	sum, err := os.ReadFile(filepath.Join(g.Config.OutputDir, daggerModPath, "go.sum"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, false, fmt.Errorf("could not read go.sum: %w", err)
 	}
-	sum = append(sum, '\n')
-	sum = append(sum, g.Config.ModuleConfig.SDKGoSum...)
 
 	modBody, err := goMod.Format()
 	if err != nil {
@@ -246,40 +244,6 @@ func (g *GoGenerator) syncModReplaceAndTidy(mod *modfile.File, genSt *generator.
 	goWork, err := goEnv(modDir, "GOWORK")
 	if err != nil {
 		return fmt.Errorf("find go.work: %w", err)
-	}
-
-	// use the Go SDK library's go.mod as basis for pinning versions
-	sdkMod, err := modfile.Parse("go.mod", g.Config.ModuleConfig.SDKGoMod, nil)
-	if err != nil {
-		return fmt.Errorf("parse SDK go.mod: %w", err)
-	}
-	modRequires := make(map[string]*modfile.Require)
-	for _, req := range mod.Require {
-		modRequires[req.Mod.Path] = req
-	}
-	for _, minReq := range sdkMod.Require {
-		// check if mod already at least this version
-		if currentReq, ok := modRequires[minReq.Mod.Path]; ok {
-			if semver.Compare(currentReq.Mod.Version, minReq.Mod.Version) >= 0 {
-				continue
-			}
-		}
-		modRequires[minReq.Mod.Path] = minReq
-		mod.AddNewRequire(minReq.Mod.Path, minReq.Mod.Version, minReq.Indirect)
-	}
-
-	// preserve any replace directives in sdk/go's go.mod (e.g. pre-1.0 packages)
-	for _, minReq := range sdkMod.Replace {
-		if _, ok := modRequires[minReq.New.Path]; !ok {
-			// ignore anything that's sdk/go only
-			continue
-		}
-		genSt.PostCommands = append(genSt.PostCommands,
-			exec.Command("go", "mod", "edit", "-replace", minReq.Old.Path+"="+minReq.New.Path+"@"+minReq.New.Version))
-		if goWork != "" {
-			genSt.PostCommands = append(genSt.PostCommands,
-				exec.Command("go", "work", "edit", "-replace", minReq.Old.Path+"="+minReq.New.Path+"@"+minReq.New.Version))
-		}
 	}
 
 	// Check if the module go.mod replaces the dagger.io/dagger library with a

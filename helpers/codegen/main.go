@@ -13,11 +13,11 @@
 //	    generate a standalone Go client (default, no subcommand)
 //	codegen generate-module --introspection-json-path P --output D \
 //	    --module-source-path S --module-name N [--module-parent-path P] \
-//	    --lib-version V --sdk-gomod-path P --sdk-gosum-path P
+//	    --lib-version V
 //	    generate a Go module's dagger.gen.go from the merged schema
 //	codegen module-types --introspection-json-path P --output D \
 //	    --module-source-path S --module-name N [--module-parent-path P] \
-//	    --lib-version V --sdk-gomod-path P --sdk-gosum-path P \
+//	    --lib-version V \
 //	    --module-types-out P
 //	    emit the module's own types as introspection JSON for the caller to
 //	    merge into the dependency schema
@@ -146,8 +146,6 @@ type moduleFlags struct {
 	parentPath        string
 	name              string
 	libVersion        string
-	sdkGoModPath      string
-	sdkGoSumPath      string
 }
 
 func (mf *moduleFlags) bind(fs *flag.FlagSet) {
@@ -157,8 +155,6 @@ func (mf *moduleFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&mf.parentPath, "module-parent-path", "", "module-source-relative path to the context directory")
 	fs.StringVar(&mf.name, "module-name", "", "name of the module to generate code for")
 	fs.StringVar(&mf.libVersion, "lib-version", "", "dagger.io/dagger version to pin in the generated go.mod")
-	fs.StringVar(&mf.sdkGoModPath, "sdk-gomod-path", "", "path to the dagger.io/dagger library go.mod")
-	fs.StringVar(&mf.sdkGoSumPath, "sdk-gosum-path", "", "path to the dagger.io/dagger library go.sum")
 }
 
 func (mf *moduleFlags) config() (generator.Config, error) {
@@ -168,21 +164,6 @@ func (mf *moduleFlags) config() (generator.Config, error) {
 	if mf.sourcePath == "" {
 		return generator.Config{}, fmt.Errorf("--module-source-path is required")
 	}
-	var sdkGoMod, sdkGoSum []byte
-	if mf.sdkGoModPath != "" {
-		b, err := os.ReadFile(mf.sdkGoModPath)
-		if err != nil {
-			return generator.Config{}, fmt.Errorf("read sdk go.mod: %w", err)
-		}
-		sdkGoMod = b
-	}
-	if mf.sdkGoSumPath != "" {
-		b, err := os.ReadFile(mf.sdkGoSumPath)
-		if err != nil {
-			return generator.Config{}, fmt.Errorf("read sdk go.sum: %w", err)
-		}
-		sdkGoSum = b
-	}
 	return generator.Config{
 		OutputDir: mf.outputDir,
 		ModuleConfig: &generator.ModuleGeneratorConfig{
@@ -190,8 +171,6 @@ func (mf *moduleFlags) config() (generator.Config, error) {
 			ModuleSourcePath: mf.sourcePath,
 			ModuleParentPath: mf.parentPath,
 			LibVersion:       mf.libVersion,
-			SDKGoMod:         sdkGoMod,
-			SDKGoSum:         sdkGoSum,
 		},
 	}, nil
 }

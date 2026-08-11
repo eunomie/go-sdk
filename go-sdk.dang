@@ -353,18 +353,6 @@ type GoSdk {
   }
 
   """
-  Existing contents of the client directory, empty when it doesn't exist yet.
-  """
-  let existingClientDir(ws: Workspace!, path: String!): Directory! {
-    let filtered = ws.directory("/", include: [path + "/**"])
-    if (filtered.exists(path)) {
-      filtered.directory(path)
-    } else {
-      directory
-    }
-  }
-
-  """
   Whether a client's bound-module ref points into the workspace rather than
   at a remote module.
   """
@@ -386,7 +374,7 @@ type GoSdk {
       module,
       modSrc.asString,
       modSrc.pin,
-      existingClientDir(ws, path),
+      existingDir(ws, path),
     )
     pws.fork.withDirectory(path, generated).changes
   }
@@ -418,7 +406,7 @@ type GoSdk {
             client.source,
             src.asString,
             src.pin,
-            existingClientDir(ws, client.name),
+            existingDir(ws, client.name),
           )
         } else {
           let m = moduleSource(refString: client.source)
@@ -431,7 +419,7 @@ type GoSdk {
             client.source,
             m.asString,
             m.pin,
-            existingClientDir(ws, client.name),
+            existingDir(ws, client.name),
           )
         }
         fork.withDirectory(client.name, generated)
@@ -512,19 +500,26 @@ track main.
 let goSDKLibVersion: String! = "1309520660f6a5b35ef97b4fbe151e32a06a8dc5"
 
 """
+Existing contents of the workspace directory at `path`, empty when it doesn't
+exist yet. Shared by client and module generation as the codegen input seed.
+"""
+let existingDir(ws: Workspace!, path: String!): Directory! {
+  let filtered = ws.directory("/", include: [path + "/**"])
+  if (filtered.exists(path)) {
+    filtered.directory(path)
+  } else {
+    directory
+  }
+}
+
+"""
 Existing source of the module rooted at `path`, used as the codegen input (its
 user files are preserved; the generated files overlay it). The stale
 dagger.gen.go is dropped so codegen regenerates it fresh, mirroring the
 engine's withoutFile before codegen.
 """
 let moduleSourceDir(ws: Workspace!, path: String!): Directory! {
-  let filtered = ws.directory("/", include: [path + "/**"])
-  let dir = if (filtered.exists(path)) {
-    filtered.directory(path)
-  } else {
-    directory
-  }
-  dir.withoutFile("dagger.gen.go")
+  existingDir(ws, path).withoutFile("dagger.gen.go")
 }
 
 """

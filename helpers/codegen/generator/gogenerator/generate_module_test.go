@@ -23,7 +23,6 @@ func TestSyncModReplaceAndTidyPinsDaggerWithoutUpdatingTransitiveDeps(t *testing
 				ModuleName:       "test",
 				ModuleSourcePath: ".",
 				LibVersion:       "v1.2.3",
-				SDKGoMod:         []byte("module dagger.io/dagger\n\ngo 1.25.0\n"),
 			},
 		},
 	}

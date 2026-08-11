@@ -189,6 +189,9 @@ func generateDependencyFiles(
 			depFilePath = filepath.Join(internalDaggerDir, depFileName)
 		}
 
+		if err := mfs.MkdirAll(filepath.Dir(depFilePath), 0o755); err != nil {
+			return err
+		}
 		if err := mfs.WriteFile(depFilePath, dt, 0600); err != nil {
 			return fmt.Errorf("write dependency file %q: %w", depFilePath, err)
 		}
