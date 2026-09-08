@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -160,6 +161,20 @@ func packageImportPath(moduleRoot, outputDir string) (string, error) {
 	return path.Join(file.Module.Mod.Path, filepath.ToSlash(rel)), nil
 }
 
+// moduleVersionExists reports whether the module proxy can resolve the given
+// version. Resolution needs the network, so a failure to reach it reads as
+// "cannot pin" rather than as an error: skipping the pin leaves a module the
+// toolchain can still resolve on its own.
+func moduleVersionExists(dir, modulePath, version string) bool {
+	cmd := exec.Command("go", "list", "-m", "-e", "-f", "{{if .Error}}unresolved{{end}}", modulePath+"@"+version)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == ""
+}
+
 func updateModuleGoMod(moduleRoot, engineVersion string) error {
 	if engineVersion == "" {
 		return nil
@@ -182,6 +197,15 @@ func updateModuleGoMod(moduleRoot, engineVersion string) error {
 		if require.Mod.Path == "dagger.io/dagger" && semver.Compare(require.Mod.Version, engineVersion) >= 0 {
 			return nil
 		}
+	}
+	// An engine release does not imply a published dagger.io/dagger of the same
+	// version: a development engine reports the next, unreleased version. Pinning
+	// that leaves a requirement nothing can resolve, and every later go command
+	// in the module fails on it — including the `go get dagger.io/dagger@<commit>`
+	// the engine's own module codegen runs, which is what would have supplied a
+	// usable version.
+	if !moduleVersionExists(moduleRoot, "dagger.io/dagger", engineVersion) {
+		return nil
 	}
 	if err := file.AddRequire("dagger.io/dagger", engineVersion); err != nil {
 		return fmt.Errorf("update dagger.io/dagger requirement: %w", err)
