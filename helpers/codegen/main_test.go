@@ -113,3 +113,25 @@ func TestUpdateModuleGoMod(t *testing.T) {
 		}
 	})
 }
+
+// A development engine reports the next, unreleased version, which has no
+// published dagger.io/dagger counterpart. Pinning it would leave the module
+// with a requirement nothing can resolve.
+func TestUpdateModuleGoModSkipsUnpublishedEngineVersion(t *testing.T) {
+	root := t.TempDir()
+	goModPath := filepath.Join(root, "go.mod")
+	goMod := "module example.com/app\n\ngo 1.25\n"
+	if err := os.WriteFile(goModPath, []byte(goMod), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateModuleGoMod(root, "v99.0.0-does-not-exist"); err != nil {
+		t.Fatalf("updateModuleGoMod: %v", err)
+	}
+	data, err := os.ReadFile(goModPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != goMod {
+		t.Fatalf("go.mod changed:\n%s", data)
+	}
+}
