@@ -1,5 +1,8 @@
 """End-to-end checks for the Go SDK module provider."""
 type E2e {
+  """Checks for manifest generation and dependency pins."""
+  manifest: ManifestChecks! { ManifestChecks() }
+
   let fixtureRoot: String! = ".dagger/modules/e2e/fixtures"
   let outputRoot: String! = ".dagger/modules/e2e/out"
   let clientTargetPath: String! = fixtureRoot + "/client/dep"
