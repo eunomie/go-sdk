@@ -39,7 +39,10 @@ type E2e {
     null
   }
 
-  """A new module gets current and legacy manifests, starter source, and generated Go code."""
+  """
+  A new module gets the current manifest, starter source, and generated Go code.
+  The legacy manifest follows fat.
+  """
   moduleInitCheck(ws: Workspace!): Void @check {
     let scopePath = outputRoot + "/module-init"
     let input = ws
@@ -53,7 +56,7 @@ type E2e {
     )
 
     assert(exists(generated, "dagger-module.toml"), "module manifest was not created")
-    assert(exists(generated, "dagger.json"), "legacy module manifest was not created")
+    assert(exists(generated, "dagger.json") == false, "legacy module manifest was created by default")
     assert(exists(generated, "main.go"), "starter source was not created")
     assert(exists(generated, "dagger.gen.go"), "module adapter was not generated")
     assert(exists(generated, "internal/dagger/dagger.gen.go"), "aggregate client package was not generated")
@@ -61,11 +64,28 @@ type E2e {
     assertContains(generated.file("dagger-module.toml").contents, "engineVersion = \"v", "manifest engine version is missing")
     assertContains(generated.file("dagger-module.toml").contents, "source = \"go\"", "manifest runtime is wrong")
     assert(generated.file("dagger-module.toml").contents.contains("source = \".\"") == false, "manifest has an unexpected module source")
-    assertContains(generated.file("dagger.json").contents, "\"name\": \"module-init\"", "legacy manifest name is wrong")
-    assertContains(generated.file("dagger.json").contents, "\"engineVersion\": \"v", "legacy manifest engine version is missing")
-    assertContains(generated.file("dagger.json").contents, "\"source\": \"go\"", "legacy manifest runtime is wrong")
-    assert(generated.file("dagger.json").contents.contains("\"source\": \".\"") == false, "legacy manifest has an unexpected module source")
     assertContains(generated.file("user.txt").contents, "keep me", "existing file was not preserved")
+
+    let fat = goSdk(fat: true).generateScope(
+      ws: generated,
+      isModule: true,
+      name: "module-init",
+      clients: [],
+    )
+    assert(exists(fat, "dagger.json"), "fat generation did not create the legacy module manifest")
+    assertContains(fat.file("dagger.json").contents, "\"name\": \"module-init\"", "legacy manifest name is wrong")
+    assertContains(fat.file("dagger.json").contents, "\"engineVersion\": \"v", "legacy manifest engine version is missing")
+    assertContains(fat.file("dagger.json").contents, "\"source\": \"go\"", "legacy manifest runtime is wrong")
+    assert(fat.file("dagger.json").contents.contains("\"source\": \".\"") == false, "legacy manifest has an unexpected module source")
+
+    let thin = goSdk.generateScope(
+      ws: fat,
+      isModule: true,
+      name: "module-init",
+      clients: [],
+    )
+    assert(exists(thin, "dagger.json") == false, "disabling fat retained the legacy module manifest")
+    assert(thin.file("dagger-module.toml").contents == generated.file("dagger-module.toml").contents, "toggling fat changed the module manifest")
     null
   }
 
@@ -77,13 +97,13 @@ type E2e {
       .withNewDirectory(scopePath, directory)
       .withWorkdir(scopePath)
     let target = ws.moduleSource("/" + clientTargetPath)
-    let initialized = goSdk.generateScope(
+    let initialized = goSdk(fat: true).generateScope(
       ws: input,
       isModule: true,
       name: "module-client",
       clients: [],
     )
-    let generated = goSdk.generateScope(
+    let generated = goSdk(fat: true).generateScope(
       ws: initialized,
       isModule: true,
       name: "module-client",

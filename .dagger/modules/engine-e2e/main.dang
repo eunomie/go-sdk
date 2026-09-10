@@ -41,11 +41,29 @@ type EngineE2e {
         "--path", ".dagger/modules/sdk-smoke",
       ])
       .withExec(["test", "-f", ".dagger/modules/sdk-smoke/dagger-module.toml"])
-      .withExec(["test", "-f", ".dagger/modules/sdk-smoke/dagger.json"])
+      .withExec(["test", "!", "-e", ".dagger/modules/sdk-smoke/dagger.json"])
       .withExec(["test", "-f", ".dagger/modules/sdk-smoke/dagger.gen.go"])
       .withExec(["test", "-f", ".dagger/modules/sdk-smoke/internal/dagger/dagger.gen.go"])
 
-    let release = initialized
+    let fat = initialized
+      .withExec([
+        "dagger", "--auto-apply", "module", "init", "go",
+        "--name", "sdk-smoke",
+        "--path", ".dagger/modules/sdk-smoke",
+        "--fat",
+      ])
+      .withExec(["test", "-f", ".dagger/modules/sdk-smoke/dagger.json"])
+
+    let thin = fat
+      .withExec([
+        "dagger", "--auto-apply", "module", "init", "go",
+        "--name", "sdk-smoke",
+        "--path", ".dagger/modules/sdk-smoke",
+        "--fat=false",
+      ])
+      .withExec(["test", "!", "-e", ".dagger/modules/sdk-smoke/dagger.json"])
+
+    let release = thin
       .withExec([
         "dagger", "-m", ".dagger/modules/sdk-smoke",
         "call", "container", "file",

@@ -9,6 +9,12 @@ type GoSdk {
   """
   template: String! = "default"
 
+  """
+  Generate a fat module that includes dagger.json for older engines.
+  By default, generated modules require Dagger v1.0.0-beta.3 or later.
+  """
+  fat: Boolean! = false
+
   """Write selected dependency commits to the module manifests."""
   lock: Boolean! = false
 
@@ -80,7 +86,7 @@ type GoSdk {
     }
   }
 
-  """Create both manifests from the scope inputs and SDK defaults."""
+  """Create the module manifests from the scope inputs and SDK defaults."""
   let generatedManifest(
     ws: Workspace!,
     name: String!,
@@ -92,7 +98,7 @@ type GoSdk {
 
     clients.reduce(base) { manifest, target =>
       manifest.withLegacyRuntimeDependency(module: target)
-    }.generate(ws, lock: lock)
+    }.generate(ws, lock: lock, legacyJson: fat)
   }
 
   """Run built-in Go codegen and discard its manifest files."""

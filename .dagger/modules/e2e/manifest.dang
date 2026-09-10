@@ -5,7 +5,7 @@ type ManifestChecks {
     let scope = ".dagger/modules/e2e/fixtures/manifest/nested/app"
     let input = ws.withNewFile(scope + "/keep.txt", "keep").withWorkdir(scope)
     let target = ws.moduleSource("/.dagger/modules/e2e/fixtures/manifest/dep")
-    let generated = goSdk.generateScope(ws: input, isModule: true, name: "app", clients: [target])
+    let generated = goSdk(fat: true).generateScope(ws: input, isModule: true, name: "app", clients: [target])
     let json = generated.file("dagger.json").contents
     let toml = generated.file("dagger-module.toml").contents
     self.assert(json.contains("\"source\": \"../../dep\""), "JSON dependency path is wrong")
@@ -18,35 +18,38 @@ type ManifestChecks {
     self.assert(generated.directory(".").exists("internal/dagger/dep.gen.go"), "Go module client was not generated")
     self.assert(generated.directory(".").exists("internal/dagger/clients/dep/dep.gen.go"), "standalone client was not generated")
 
-    let repeated = goSdk.generateScope(ws: generated, isModule: true, name: "app", clients: [target])
+    let repeated = goSdk(fat: true).generateScope(ws: generated, isModule: true, name: "app", clients: [target])
     self.assert(repeated.file("dagger.json").contents == json, "repeated generation changed JSON")
     self.assert(repeated.file("dagger-module.toml").contents == toml, "repeated generation changed TOML")
 
     let runnable = repeated.withNewFile("main.go",
       "package main\n\nimport \"context\"\n\ntype App struct{}\n\n" +
         "func (m *App) Hello(ctx context.Context) (string, error) { return dag.Dep().Hello(ctx) }\n")
-    let rebuilt = goSdk.generateScope(ws: runnable, isModule: true, name: "app", clients: [target])
+    let rebuilt = goSdk(fat: true).generateScope(ws: runnable, isModule: true, name: "app", clients: [target])
     let schema = rebuilt.withWorkdir(".").moduleSource("/" + scope).clientSchemaIntrospectionJSON.contents
     self.assert(schema.contains("\"hello\""), "generated Go module did not compile and expose its function")
   }
 
-  """The SDK passes the lock option and the selected Git commit to the helper."""
+  """The SDK passes the lock and fat options and the selected Git commit to the helper."""
   gitClientCheck(ws: Workspace!): Void @check {
     let commit = "64645f1967d3dba6fce951dd61ae4acd8d9b0861"
     let target = moduleSource("github.com/dagger/sdk-helpers@main", refPin: commit)
     let input = ws.withWorkdir(".dagger/modules/e2e/fixtures/manifest/git-app").withNewFile("keep.txt", "keep")
-    let unlocked = goSdk.generateScope(ws: input, isModule: true, name: "git-app", clients: [target])
+    let unlocked = goSdk(fat: true).generateScope(ws: input, isModule: true, name: "git-app", clients: [target])
     self.assert(!unlocked.file("dagger.json").contents.contains("\"pin\":"), "the SDK wrote a default JSON pin")
     self.assert(!unlocked.file("dagger-module.toml").contents.contains("pin ="), "the SDK wrote a default TOML pin")
     self.assert(unlocked.file("dagger-module.toml").contents.contains("source = " + JSON.encode(target.asString)),
       "the SDK changed the Git source")
     self.assert(unlocked.file("internal/dagger/clients/sdk-helpers/dagger.gen.go").contents.contains("RefPin: \"" + commit + "\""), "default output lost the generated client commit")
-    let locked = goSdk(lock: true).generateScope(ws: unlocked, isModule: true, name: "git-app", clients: [target])
+    let locked = goSdk(fat: true, lock: true).generateScope(ws: unlocked, isModule: true, name: "git-app", clients: [target])
     self.assert(locked.file("dagger.json").contents.contains("\"pin\": " + JSON.encode(commit)), "the SDK did not write the selected JSON pin")
     self.assert(locked.file("dagger-module.toml").contents.contains("pin = " + JSON.encode(commit)), "the SDK did not write the selected TOML pin")
-    let unlockedAgain = goSdk.generateScope(ws: locked, isModule: true, name: "git-app", clients: [target])
+    let unlockedAgain = goSdk(fat: true).generateScope(ws: locked, isModule: true, name: "git-app", clients: [target])
     self.assert(!unlockedAgain.file("dagger.json").contents.contains("\"pin\":"), "disabling lock retained a JSON pin")
     self.assert(!unlockedAgain.file("dagger-module.toml").contents.contains("pin ="), "disabling lock retained a TOML pin")
+    let thin = goSdk(lock: true).generateScope(ws: locked, isModule: true, name: "git-app", clients: [target])
+    self.assert(!thin.directory(".").exists("dagger.json"), "disabling fat retained JSON")
+    self.assert(thin.file("dagger-module.toml").contents.contains("pin = " + JSON.encode(commit)), "disabling fat lost the selected TOML pin")
   }
 
   let assert(condition: Boolean!, message: String!): Void {
