@@ -13,6 +13,7 @@ type EngineE2e {
   """Build the pinned main engine and use this checkout as its Go SDK."""
   devSdkCheck(ws: Workspace!): Void @check {
     let sdkSource = ws.directory("/", exclude: [".git"])
+      .withFile("dagger.toml", ws.file("/.dagger/modules/engine-e2e/workspace.toml"))
     assert(sdkSource.exists("dagger.toml"), "Go SDK workspace source has no dagger.toml")
 
     let engineSource = git("https://github.com/dagger/dagger")
@@ -30,7 +31,7 @@ type EngineE2e {
     assert(listed.stdout.contains("go"), "development Go SDK was not listed")
 
     let checked = listed.withExec([
-      "dagger", "-m", ".dagger/modules/e2e", "check",
+      "dagger", "check",
     ])
 
     let initialized = checked
