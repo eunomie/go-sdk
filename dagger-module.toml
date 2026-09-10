@@ -1,0 +1,9 @@
+name = "go-sdk"
+engineVersion = "v1.0.0"
+
+[runtime]
+source = "dang"
+
+[[dependencies]]
+name = "sdk-helpers"
+source = "dagger.io/sdk/helpers@v1"
