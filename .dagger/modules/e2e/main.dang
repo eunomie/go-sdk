@@ -121,13 +121,15 @@ type E2e {
 
   """A client-only scope writes one target package under internal/dagger/clients."""
   standaloneClientCheck(ws: Workspace!): Void @check {
+    # Use a published version so the generator can add the Go requirement.
+    let publishedVersion = "v1.0.0-beta.11"
     let scopePath = fixtureRoot + "/go-scope"
     let input = ws
       .withNewFile(scopePath + "/go.mod", "module example.com/app\n\ngo 1.25\n")
       .withNewFile(scopePath + "/user.go", "package app\n")
       .withWorkdir(scopePath)
-    let target = ws.moduleSource("/" + clientTargetPath)
-    let secondTarget = ws.moduleSource("/" + secondClientTargetPath)
+    let target = ws.moduleSource("/" + clientTargetPath).withEngineVersion(publishedVersion)
+    let secondTarget = ws.moduleSource("/" + secondClientTargetPath).withEngineVersion(publishedVersion)
     let generated = goSdk.generateScope(
       ws: input,
       isModule: false,
@@ -147,7 +149,7 @@ type E2e {
       "ModuleSource(\"/" + clientTargetPath + "\")",
       "local target path was not preserved",
     )
-    assertContains(generated.file("go.mod").contents, "dagger.io/dagger", "scope go.mod was not updated")
+    assertContains(generated.file("go.mod").contents, "dagger.io/dagger " + publishedVersion, "scope go.mod was not updated")
     assert(exists(generated, "user.go"), "user source was not preserved")
 
     let regenerated = goSdk.generateScope(
