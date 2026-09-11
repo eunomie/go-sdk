@@ -139,7 +139,7 @@ type E2e {
     null
   }
 
-  """A client-only scope writes one target package under internal/dagger/clients."""
+  """A client batch preserves earlier outputs, requirements, and the caller's cwd."""
   standaloneClientCheck(ws: Workspace!): Void @check {
     # Use a published version so the generator can add the Go requirement.
     let publishedVersion = "v1.0.0-beta.11"
@@ -147,15 +147,19 @@ type E2e {
     let input = ws
       .withNewFile(scopePath + "/go.mod", "module example.com/app\n\ngo 1.25\n")
       .withNewFile(scopePath + "/user.go", "package app\n")
-      .withWorkdir(scopePath)
+      .withNewFile(scopePath + "/nested/keep.txt", "keep\n")
+      .withWorkdir(scopePath + "/nested")
     let target = ws.moduleSource("/" + clientTargetPath).withEngineVersion(publishedVersion)
-    let secondTarget = ws.moduleSource("/" + secondClientTargetPath).withEngineVersion(publishedVersion)
-    let generated = goSdk.generateScope(
+    # A later client must not downgrade the requirement added by the first.
+    let secondTarget = ws.moduleSource("/" + secondClientTargetPath).withEngineVersion("v1.0.0-beta.10")
+    let result = goSdk.generateScope(
       ws: input,
       isModule: false,
       name: "standalone-client",
       clients: [target, secondTarget],
     )
+    assert(result.cwd == input.cwd, "client generation changed the caller's cwd")
+    let generated = result.withWorkdir(scopePath)
     let targetPath = "internal/dagger/clients/client-dep"
     let secondTargetPath = "internal/dagger/clients/client-app"
 
@@ -170,7 +174,8 @@ type E2e {
       "local target path was not preserved",
     )
     assertContains(generated.file("go.mod").contents, "dagger.io/dagger " + publishedVersion, "scope go.mod was not updated")
-    assert(exists(generated, "user.go"), "user source was not preserved")
+    assert(generated.file("user.go").contents == "package app\n", "user source was not preserved")
+    assert(generated.file("nested/keep.txt").contents == "keep\n", "nested user file was not preserved")
 
     let regenerated = goSdk.generateScope(
       ws: generated,

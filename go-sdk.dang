@@ -76,15 +76,27 @@ type GoSdk {
     ws: Workspace!,
     clients: [ModuleSource!]!,
   ): Workspace! {
+    if (clients.length == 0) {
+      return ws
+    }
     let originalScope = normalizePath(ws.cwd)
-    clients.reduce(ws) { current, target =>
-      let goScope = findClientRoot(current)
-      if (goScope == null) {
-        raise "cannot generate Go clients without a go.mod"
-      } else {
-        generateStandaloneClient(current.withWorkdir(goScope), target)
-          .withWorkdir(originalScope)
+    let goScope = findClientRoot(ws)
+    if (goScope == null) {
+      raise "cannot generate Go clients without a go.mod"
+    } else {
+      let scoped = ws.withWorkdir(goScope)
+      let base = codegenBuilder.withDirectory(
+        "/out",
+        scoped.directory(".", exclude: ["**/.git"]),
+      )
+      # Keep prior client outputs and go.mod updates in the same container.
+      # Only the completed batch needs to be merged into the workspace.
+      let generated = clients.reduce(base) { current, target =>
+        generateStandaloneClient(current, target)
       }
+      scoped
+        .withDirectory(".", generated.directory("/out"))
+        .withWorkdir(originalScope)
     }
   }
 
@@ -147,8 +159,8 @@ type GoSdk {
     "{\"kind\":" + kindJSON + ",\"path\":" + JSON.encode(path) + ",\"ref\":" + JSON.encode(ref) + ",\"pin\":" + JSON.encode(pin) + "}"
   }
 
-  """Generate one standalone target client in its final scope-relative path."""
-  let generateStandaloneClient(ws: Workspace!, target: ModuleSource!): Workspace! {
+  """Generate one target client in the batch's Go module at /out."""
+  let generateStandaloneClient(ctr: Container!, target: ModuleSource!): Container! {
     let targetName = target.moduleOriginalName
     let outputPath = "internal/dagger/clients/" + targetName
     let metaJSON = "{\"engineVersion\":" + JSON.encode(target.engineVersion) +
@@ -158,10 +170,9 @@ type GoSdk {
         target.asString,
         target.pin,
       ) + "}"
-    let generated = codegenBuilder
+    ctr
       .withFile("/schema.json", target.clientSchemaIntrospectionJSON)
       .withNewFile("/meta.json", metaJSON)
-      .withDirectory("/out", ws.directory("."))
       .withExec([
         "codegen",
         "--introspection-json-path", "/schema.json",
@@ -169,9 +180,6 @@ type GoSdk {
         "--output", "/out/" + outputPath,
         "--module-root", "/out",
       ])
-      .directory("/out")
-
-    ws.withDirectory(".", generated)
   }
 
   """Render one templates/<name> starter for a new module."""
