@@ -50,7 +50,9 @@ type GoSdk {
     if (isModule) {
       let configured = generatedManifest(initialized, name, clients)
       let generated = configured.withDirectory(".", generatedModuleCode(configured))
-      generateStandaloneClients(generatedManifest(generated, name, clients), clients)
+      # generatedModuleCode excludes manifests, so the configured ones survive
+      # the merge. Rewriting them here would repeat the same workspace edit.
+      generateStandaloneClients(generated, clients)
     } else {
       generateStandaloneClients(initialized, clients)
     }
