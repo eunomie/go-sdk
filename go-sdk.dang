@@ -86,19 +86,45 @@ type GoSdk {
     }
   }
 
-  """Create the module manifests from the scope inputs and SDK defaults."""
+  """
+  Create the module manifests from the scope inputs and SDK defaults.
+
+  An existing manifest is loaded first so regeneration keeps the fields the
+  scope does not own, such as include, source, and codegen.
+  """
   let generatedManifest(
     ws: Workspace!,
     name: String!,
     clients: [ModuleSource!]!,
   ): Workspace! {
-    let base = sdkHelpers.moduleManifest
+    let dir = ws.directory(".")
+    let hasTOML = exists(ws, "dagger-module.toml")
+    let hasJSON = exists(ws, "dagger.json")
+    let base = sdkHelpers.moduleManifest(
+      loadToml: if (hasTOML) { dir.file("dagger-module.toml") } else { null },
+      loadJson: if (hasJSON) { dir.file("dagger.json") } else { null },
+    )
       .withName(name)
-      .withLegacyGoRuntime
+      .withLegacyGoRuntime(moduleSource: if (hasTOML or hasJSON) { moduleSourcePath(ws) } else { null })
 
     clients.reduce(base) { manifest, target =>
       manifest.withLegacyRuntimeDependency(module: target)
     }.generate(ws, lock: lock, legacyJson: fat)
+  }
+
+  """Return the module code path relative to the manifest at ws.cwd."""
+  let moduleSourcePath(ws: Workspace!): String! {
+    let scopePath = normalizePath(ws.cwd)
+    let src = ws
+      .withWorkdir(".")
+      .moduleSource(if (scopePath == ".") { "/" } else { "/" + scopePath })
+    let relative = Path(normalizePath(src.sourceSubpath))
+      .relativeTo(Path(normalizePath(src.sourceRootSubpath)))
+    if (relative == null) {
+      raise "cannot make module source path relative to the manifest directory"
+    } else {
+      relative.string
+    }
   }
 
   """Run built-in Go codegen and discard its manifest files."""
