@@ -1,20 +1,22 @@
-"""Checks the Go SDK against the Dagger development engine."""
+"""
+Checks the Go SDK against the Dagger development engine.
+"""
 type EngineE2e {
-  """Main commit shared by the engine-dev dependency and target engine."""
+  """
+  Main commit shared by the engine-dev dependency and target engine.
+  """
   let engineCommit: String! = "0d031c08ef3e379c6f4eb7f8f5cad4638a168863"
 
-  let assert(condition: Boolean!, message: String!): Void {
-    if (condition == false) {
-      raise message
-    }
-    null
-  }
-
-  """Build the pinned main engine and use this checkout as its Go SDK."""
+  """
+  Build the pinned main engine and use this checkout as its Go SDK.
+  """
   devSdkCheck(ws: Workspace!): Void @check {
-    let sdkSource = ws.directory("/", exclude: [".git"])
+    let sdkSource = ws
+      .directory("/", exclude: [".git"])
       .withFile("dagger.toml", ws.file("/.dagger/modules/engine-e2e/workspace.toml"))
-    assert(sdkSource.exists("dagger.toml"), "Go SDK workspace source has no dagger.toml")
+    assert("Go SDK workspace source has no dagger.toml") {
+      sdkSource.exists("dagger.toml")
+    }
 
     let engineSource = git("https://github.com/dagger/dagger")
       .ref(engineCommit)
@@ -24,15 +26,17 @@ type EngineE2e {
       .withMountedDirectory("./go-sdk", sdkSource)
       .withWorkdir("./go-sdk")
       .withExec(["git", "init", "--quiet"])
-    assert(client.directory(".").exists("dagger.toml"), "nested client has no dagger.toml")
+    assert("nested client has no dagger.toml") {
+      client.directory(".").exists("dagger.toml")
+    }
 
     let listed = client.withExec(["dagger", "sdk", "list"])
 
-    assert(listed.stdout.contains("go"), "development Go SDK was not listed")
+    assert("development Go SDK was not listed") {
+      listed.stdout.contains("go")
+    }
 
-    let checked = listed.withExec([
-      "dagger", "check",
-    ])
+    let checked = listed.withExec(["dagger", "check"])
 
     let initialized = checked
       .withExec([
@@ -72,7 +76,9 @@ type EngineE2e {
       ])
       .stdout
 
-    assert(release.trim != "", "generated module did not run")
+    assert("generated module did not run") {
+      release.trim != ""
+    }
     null
   }
 }
