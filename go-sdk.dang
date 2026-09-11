@@ -86,19 +86,21 @@ type GoSdk {
     }
   }
 
-  """Create the module manifests from the scope inputs and SDK defaults."""
+  """
+  Create the module manifests from the scope inputs and SDK defaults.
+
+  Fields of an existing manifest that the scope does not set are kept.
+  """
   let generatedManifest(
     ws: Workspace!,
     name: String!,
     clients: [ModuleSource!]!,
   ): Workspace! {
-    let base = sdkHelpers.moduleManifest
+    sdkHelpers.loadModuleManifest(ws)
       .withName(name)
       .withLegacyGoRuntime
-
-    clients.reduce(base) { manifest, target =>
-      manifest.withLegacyRuntimeDependency(module: target)
-    }.generate(ws, lock: lock, legacyJson: fat)
+      .withLegacyRuntimeDependencies(modules: clients)
+      .generate(ws, lock: lock, legacyJson: fat)
   }
 
   """Run built-in Go codegen and discard its manifest files."""
