@@ -1,7 +1,11 @@
-"""End-to-end checks for the Go SDK module provider."""
+"""
+End-to-end checks for the Go SDK module provider.
+"""
 type E2e {
-  """Checks for manifest generation and dependency pins."""
-  manifest: ManifestChecks! { ManifestChecks() }
+  """
+  Checks for manifest generation and dependency pins.
+  """
+  manifest: ManifestChecks! { ManifestChecks }
 
   let fixtureRoot: String! = ".dagger/modules/e2e/fixtures"
   let outputRoot: String! = ".dagger/modules/e2e/out"
@@ -10,32 +14,24 @@ type E2e {
   # Dagger Go library source used by the generated-client compile check.
   let daggerSourceRef: String! = "44f87a32cf6aceb807c02bebde03ccb0e3fd014e"
 
-  let assert(condition: Boolean!, message: String!): Void {
-    if (condition == false) {
-      raise message
-    }
-    null
-  }
-
-  let assertContains(value: String!, want: String!, message: String!): Void {
-    assert(value.contains(want), message)
-  }
-
   let exists(ws: Workspace!, path: String!): Boolean! {
     ws.directory(".", include: [path]).exists(path)
   }
 
-  """Client root discovery returns the nearest parent Go module."""
+  """
+  Client root discovery returns the nearest parent Go module.
+  """
   findClientRootCheck(ws: Workspace!): Void @check {
     let scopePath = fixtureRoot + "/client/existing"
     let nested = ws.withWorkdir(scopePath)
 
     let root = goSdk.findClientRoot(nested)
-    assert(root == scopePath, "findClientRoot returned an unexpected root")
-    assert(
-      goSdk.findClientRoot(ws.withWorkdir(fixtureRoot + "/client/app")) == null,
-      "findClientRoot returned a root without a go.mod",
-    )
+    assert("findClientRoot returned an unexpected root") {
+      root == scopePath
+    }
+    assert("findClientRoot returned a root without a go.mod") {
+      goSdk.findClientRoot(ws.withWorkdir(fixtureRoot + "/client/app")) == null
+    }
     null
   }
 
@@ -55,16 +51,36 @@ type E2e {
       clients: [],
     )
 
-    assert(exists(generated, "dagger-module.toml"), "module manifest was not created")
-    assert(exists(generated, "dagger.json") == false, "legacy module manifest was created by default")
-    assert(exists(generated, "main.go"), "starter source was not created")
-    assert(exists(generated, "dagger.gen.go"), "module adapter was not generated")
-    assert(exists(generated, "internal/dagger/dagger.gen.go"), "aggregate client package was not generated")
-    assertContains(generated.file("dagger-module.toml").contents, "name = \"module-init\"", "manifest name is wrong")
-    assertContains(generated.file("dagger-module.toml").contents, "engineVersion = \"v", "manifest engine version is missing")
-    assertContains(generated.file("dagger-module.toml").contents, "source = \"go\"", "manifest runtime is wrong")
-    assert(generated.file("dagger-module.toml").contents.contains("source = \".\"") == false, "manifest has an unexpected module source")
-    assertContains(generated.file("user.txt").contents, "keep me", "existing file was not preserved")
+    assert("module manifest was not created") {
+      exists(generated, "dagger-module.toml")
+    }
+    assert("legacy module manifest was created by default") {
+      exists(generated, "dagger.json") == false
+    }
+    assert("starter source was not created") {
+      exists(generated, "main.go")
+    }
+    assert("module adapter was not generated") {
+      exists(generated, "dagger.gen.go")
+    }
+    assert("aggregate client package was not generated") {
+      exists(generated, "internal/dagger/dagger.gen.go")
+    }
+    assert("manifest name is wrong") {
+      generated.file("dagger-module.toml").contents.contains("name = \"module-init\"")
+    }
+    assert("manifest engine version is missing") {
+      generated.file("dagger-module.toml").contents.contains("engineVersion = \"v")
+    }
+    assert("manifest runtime is wrong") {
+      generated.file("dagger-module.toml").contents.contains("source = \"go\"")
+    }
+    assert("manifest has an unexpected module source") {
+      generated.file("dagger-module.toml").contents.contains("source = \".\"") == false
+    }
+    assert("existing file was not preserved") {
+      generated.file("user.txt").contents.contains("keep me")
+    }
 
     let fat = goSdk(fat: true).generateScope(
       ws: generated,
@@ -72,11 +88,21 @@ type E2e {
       name: "module-init",
       clients: [],
     )
-    assert(exists(fat, "dagger.json"), "fat generation did not create the legacy module manifest")
-    assertContains(fat.file("dagger.json").contents, "\"name\": \"module-init\"", "legacy manifest name is wrong")
-    assertContains(fat.file("dagger.json").contents, "\"engineVersion\": \"v", "legacy manifest engine version is missing")
-    assertContains(fat.file("dagger.json").contents, "\"source\": \"go\"", "legacy manifest runtime is wrong")
-    assert(fat.file("dagger.json").contents.contains("\"source\": \".\"") == false, "legacy manifest has an unexpected module source")
+    assert("fat generation did not create the legacy module manifest") {
+      exists(fat, "dagger.json")
+    }
+    assert("legacy manifest name is wrong") {
+      fat.file("dagger.json").contents.contains("\"name\": \"module-init\"")
+    }
+    assert("legacy manifest engine version is missing") {
+      fat.file("dagger.json").contents.contains("\"engineVersion\": \"v")
+    }
+    assert("legacy manifest runtime is wrong") {
+      fat.file("dagger.json").contents.contains("\"source\": \"go\"")
+    }
+    assert("legacy manifest has an unexpected module source") {
+      fat.file("dagger.json").contents.contains("\"source\": \".\"") == false
+    }
 
     let thin = goSdk.generateScope(
       ws: fat,
@@ -84,12 +110,18 @@ type E2e {
       name: "module-init",
       clients: [],
     )
-    assert(exists(thin, "dagger.json") == false, "disabling fat retained the legacy module manifest")
-    assert(thin.file("dagger-module.toml").contents == generated.file("dagger-module.toml").contents, "toggling fat changed the module manifest")
+    assert("disabling fat retained the legacy module manifest") {
+      exists(thin, "dagger.json") == false
+    }
+    assert("toggling fat changed the module manifest") {
+      thin.file("dagger-module.toml").contents == generated.file("dagger-module.toml").contents
+    }
     null
   }
 
-  """Module clients become inputs to the existing module generator."""
+  """
+  Module clients become inputs to the existing module generator.
+  """
   moduleClientCheck(ws: Workspace!): Void @check {
     let goScopePath = fixtureRoot + "/go-scope"
     let scopePath = goScopePath + "/module-client"
@@ -110,36 +142,30 @@ type E2e {
       clients: [target],
     )
 
-    assert(
-      exists(generated, "internal/dagger/client-dep.gen.go"),
-      "module client binding was not generated",
-    )
-    assert(
+    assert("module client binding was not generated") {
+      exists(generated, "internal/dagger/client-dep.gen.go")
+    }
+    assert("standalone module client was not generated") {
       exists(
         generated.withWorkdir(goScopePath),
         "internal/dagger/clients/client-dep/client-dep.gen.go",
-      ),
-      "standalone module client was not generated",
-    )
-    assertContains(
-      generated.file("dagger-module.toml").contents,
-      "name = \"client-dep\"",
-      "module client was not saved in the manifest",
-    )
-    assertContains(
-      generated.file("dagger-module.toml").contents,
-      "source = \"../../client/dep\"",
-      "module client source is wrong in the current manifest",
-    )
-    assertContains(
-      generated.file("dagger.json").contents,
-      "\"source\": \"../../client/dep\"",
-      "module client source is wrong in the legacy manifest",
-    )
+      )
+    }
+    assert("module client was not saved in the manifest") {
+      generated.file("dagger-module.toml").contents.contains("name = \"client-dep\"")
+    }
+    assert("module client source is wrong in the current manifest") {
+      generated.file("dagger-module.toml").contents.contains("source = \"../../client/dep\"")
+    }
+    assert("module client source is wrong in the legacy manifest") {
+      generated.file("dagger.json").contents.contains("\"source\": \"../../client/dep\"")
+    }
     null
   }
 
-  """A client batch preserves earlier outputs, requirements, and the caller's cwd."""
+  """
+  A client batch preserves earlier outputs, requirements, and the caller's cwd.
+  """
   standaloneClientCheck(ws: Workspace!): Void @check {
     # Use a published version so the generator can add the Go requirement.
     let publishedVersion = "v1.0.0-beta.11"
@@ -158,24 +184,40 @@ type E2e {
       name: "standalone-client",
       clients: [target, secondTarget],
     )
-    assert(result.cwd == input.cwd, "client generation changed the caller's cwd")
+    assert("client generation changed the caller's cwd") {
+      result.cwd == input.cwd
+    }
     let generated = result.withWorkdir(scopePath)
     let targetPath = "internal/dagger/clients/client-dep"
     let secondTargetPath = "internal/dagger/clients/client-app"
 
-    assert(exists(generated, targetPath + "/dagger.gen.go"), "core client code was not generated")
-    assert(exists(generated, targetPath + "/client-dep.gen.go"), "target client code was not generated")
-    assert(exists(generated, targetPath + "/dag/dag.gen.go"), "dag package was not generated")
-    assert(exists(generated, targetPath + "/go.mod") == false, "target client created a nested go.mod")
-    assert(exists(generated, secondTargetPath + "/client-app.gen.go"), "second target client was not generated")
-    assertContains(
-      generated.file(targetPath + "/dagger.gen.go").contents,
-      "ModuleSource(\"/" + clientTargetPath + "\")",
-      "local target path was not preserved",
-    )
-    assertContains(generated.file("go.mod").contents, "dagger.io/dagger " + publishedVersion, "scope go.mod was not updated")
-    assert(generated.file("user.go").contents == "package app\n", "user source was not preserved")
-    assert(generated.file("nested/keep.txt").contents == "keep\n", "nested user file was not preserved")
+    assert("core client code was not generated") {
+      exists(generated, targetPath + "/dagger.gen.go")
+    }
+    assert("target client code was not generated") {
+      exists(generated, targetPath + "/client-dep.gen.go")
+    }
+    assert("dag package was not generated") {
+      exists(generated, targetPath + "/dag/dag.gen.go")
+    }
+    assert("target client created a nested go.mod") {
+      exists(generated, targetPath + "/go.mod") == false
+    }
+    assert("second target client was not generated") {
+      exists(generated, secondTargetPath + "/client-app.gen.go")
+    }
+    assert("local target path was not preserved") {
+      generated.file(targetPath + "/dagger.gen.go").contents.contains("ModuleSource(\"/" + clientTargetPath + "\")")
+    }
+    assert("scope go.mod was not updated") {
+      generated.file("go.mod").contents.contains("dagger.io/dagger " + publishedVersion)
+    }
+    assert("user source was not preserved") {
+      generated.file("user.go").contents == "package app\n"
+    }
+    assert("nested user file was not preserved") {
+      generated.file("nested/keep.txt").contents == "keep\n"
+    }
 
     let regenerated = goSdk.generateScope(
       ws: generated,
@@ -183,11 +225,15 @@ type E2e {
       name: "standalone-client",
       clients: [target, secondTarget],
     )
-    assert(regenerated.changes(generated).isEmpty, "standalone client regeneration was not stable")
+    assert("standalone client regeneration was not stable") {
+      regenerated.changes(generated).isEmpty
+    }
     null
   }
 
-  """Two standalone target packages compile in one Go module."""
+  """
+  Two standalone target packages compile in one Go module.
+  """
   standaloneClientCompilesCheck(ws: Workspace!): Void @check {
     let scopePath = fixtureRoot + "/go-scope"
     let input = ws
@@ -225,7 +271,9 @@ type E2e {
     null
   }
 
-  """Regeneration preserves existing generated and user-owned client packages."""
+  """
+  Regeneration preserves existing generated and user-owned client packages.
+  """
   standaloneClientPreservationCheck(ws: Workspace!): Void @check {
     let scopePath = fixtureRoot + "/go-scope"
     let input = ws
@@ -247,13 +295,21 @@ type E2e {
       clients: [],
     )
 
-    assert(exists(withoutClient, "internal/dagger/clients/client-dep/dagger.gen.go"), "regeneration deleted generated client code")
-    assert(exists(withoutClient, "internal/dagger/clients/custom/user.go"), "regeneration deleted user-owned client code")
-    assert(exists(withoutClient, "user.go"), "regeneration deleted user source")
+    assert("regeneration deleted generated client code") {
+      exists(withoutClient, "internal/dagger/clients/client-dep/dagger.gen.go")
+    }
+    assert("regeneration deleted user-owned client code") {
+      exists(withoutClient, "internal/dagger/clients/custom/user.go")
+    }
+    assert("regeneration deleted user source") {
+      exists(withoutClient, "user.go")
+    }
     null
   }
 
-  """The client code generator unit tests pass."""
+  """
+  The client code generator unit tests pass.
+  """
   helperTestsCheck(ws: Workspace!): Void @check {
     let out = container
       .from("golang:1.25-alpine")
