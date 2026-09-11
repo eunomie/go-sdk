@@ -18,6 +18,14 @@ type GoSdk {
   """Write selected dependency commits to the module manifests."""
   lock: Boolean! = false
 
+  """
+  In module scopes, generate each client two times: one for the module and
+  one standalone. Non-module scopes always generate standalone clients.
+
+  Temporary: this setting will be removed when the two clients become one.
+  """
+  dualClients: Boolean! = false
+
   """Find the nearest Go module root from Workspace.cwd. Return null if no go.mod exists."""
   findClientRoot(ws: Workspace!): String {
     let goMod = ws.findUp("go.mod")
@@ -31,8 +39,9 @@ type GoSdk {
   """
   Generate the complete module and client state for one SDK scope.
 
-  Every scope generates standalone clients in its nearest Go scope. Module
-  scopes also use the built-in Go module generator.
+  Module scopes use the built-in Go module generator. With dualClients, they
+  also generate standalone clients in their nearest Go scope. Non-module
+  scopes always generate standalone clients.
   """
   generateScope(
     ws: Workspace!,
@@ -52,8 +61,13 @@ type GoSdk {
       let generated = configured.withDirectory(".", generatedModuleCode(configured))
       # generatedModuleCode excludes manifests, so the configured ones survive
       # the merge. Rewriting them here would repeat the same workspace edit.
-      generateStandaloneClients(generated, clients)
+      if (dualClients) {
+        generateStandaloneClients(generated, clients)
+      } else {
+        generated
+      }
     } else {
+      # Standalone clients are the only output here, so dualClients does not apply.
       generateStandaloneClients(initialized, clients)
     }
   }
