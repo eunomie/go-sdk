@@ -121,6 +121,7 @@ type E2e {
 
   """
   Module clients become inputs to the existing module generator.
+  Standalone clients follow dualClients.
   """
   moduleClientCheck(ws: Workspace!): Void @check {
     let goScopePath = fixtureRoot + "/go-scope"
@@ -145,11 +146,11 @@ type E2e {
     assert("module client binding was not generated") {
       exists(generated, "internal/dagger/client-dep.gen.go")
     }
-    assert("standalone module client was not generated") {
+    assert("standalone module client was generated without dualClients") {
       exists(
         generated.withWorkdir(goScopePath),
         "internal/dagger/clients/client-dep/client-dep.gen.go",
-      )
+      ) == false
     }
     assert("module client was not saved in the manifest") {
       generated.file("dagger-module.toml").contents.contains("name = \"client-dep\"")
@@ -159,6 +160,22 @@ type E2e {
     }
     assert("module client source is wrong in the legacy manifest") {
       generated.file("dagger.json").contents.contains("\"source\": \"../../client/dep\"")
+    }
+
+    let dual = goSdk(fat: true, dualClients: true).generateScope(
+      ws: initialized,
+      isModule: true,
+      name: "module-client",
+      clients: [target],
+    )
+    assert("module client binding was not generated with dualClients") {
+      exists(dual, "internal/dagger/client-dep.gen.go")
+    }
+    assert("standalone module client was not generated with dualClients") {
+      exists(
+        dual.withWorkdir(goScopePath),
+        "internal/dagger/clients/client-dep/client-dep.gen.go",
+      )
     }
     null
   }
@@ -178,6 +195,7 @@ type E2e {
     let target = ws.moduleSource("/" + clientTargetPath).withEngineVersion(publishedVersion)
     # A later client must not downgrade the requirement added by the first.
     let secondTarget = ws.moduleSource("/" + secondClientTargetPath).withEngineVersion("v1.0.0-beta.10")
+    # dualClients is false by default. Non-module scopes must ignore it.
     let result = goSdk.generateScope(
       ws: input,
       isModule: false,

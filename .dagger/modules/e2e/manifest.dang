@@ -41,8 +41,8 @@ type ManifestChecks {
     assert("Go module client was not generated") {
       generated.directory(".").exists("internal/dagger/dep.gen.go")
     }
-    assert("standalone client was not generated") {
-      generated.directory(".").exists("internal/dagger/clients/dep/dep.gen.go")
+    assert("standalone client was generated without dualClients") {
+      generated.directory(".").exists("internal/dagger/clients/dep/dep.gen.go") == false
     }
 
     let repeated = goSdk(fat: true).generateScope(
@@ -85,7 +85,8 @@ type ManifestChecks {
       "keep.txt",
       "keep",
     )
-    let unlocked = goSdk(fat: true).generateScope(
+    # The commit check reads the standalone client, so enable dualClients.
+    let unlocked = goSdk(fat: true, dualClients: true).generateScope(
       ws: input,
       isModule: true,
       name: "git-app",
