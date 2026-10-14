@@ -68,7 +68,8 @@ type GoSdk {
   from a replace target, or the embeds of an imported package. Other files
   outside the module directory are not available when a function runs:
   reading one fails with `open ../x: no such file or directory`. Local
-  replace targets must stay inside the workspace.
+  replace targets must stay inside the workspace. See docs/outside-files.md
+  for an example.
   """
   dangEntrypoint: Boolean
 
