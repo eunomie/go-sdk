@@ -12,6 +12,8 @@ import (
 
 	. "github.com/dave/jennifer/jen" //nolint:staticcheck
 	"github.com/stretchr/testify/require"
+
+	"github.com/dagger/go-sdk/cmd/dagger-go-sdk-codegen/introspection"
 )
 
 func TestDeveloperArgEncoding(t *testing.T) {
@@ -210,46 +212,46 @@ func TestEntrypointSourceGolden(t *testing.T) {
 	require.Equal(t, updateAndGetFixture(t, "testdata/entrypoint.golden", got), got)
 }
 
-func workspaceFixture() *v2Module {
+func sourcesFixture() *v2Module {
 	mod := entrypointFixture()
-	mod.include = &WorkspaceBuild{ModulePath: "hello-world"}
+	mod.sources = &EntrypointSources{Anchor: "..", Include: []string{"lib/go.mod", "lib/greet/*.go", "lib/greet/greeting.txt"}}
 	return mod
 }
 
-func TestEntrypointWorkspaceGolden(t *testing.T) {
-	source, err := workspaceFixture().renderEntrypointSource("hello-world", ".", "golang:1.26.1-alpine", "hello_world")
+func TestEntrypointSourcesGolden(t *testing.T) {
+	source, err := sourcesFixture().renderEntrypointSource("hello-world", ".", "golang:1.26.1-alpine", "hello_world")
 	require.NoError(t, err)
 	got := string(source)
-	require.Equal(t, updateAndGetFixture(t, "testdata/entrypoint_workspace.golden", got), got)
+	require.Equal(t, updateAndGetFixture(t, "testdata/entrypoint_sources.golden", got), got)
 }
 
-func TestEntrypointRediscoversWorkspaceInputs(t *testing.T) {
-	source, err := workspaceFixture().renderEntrypointSource("hello-world", ".", "golang:1.26.1-alpine", "hello_world")
+func TestEntrypointSourcesAnchor(t *testing.T) {
+	mod := entrypointFixture()
+	mod.sources = &EntrypointSources{Anchor: "../../..", Include: []string{"go.mod", "greet/*.go"}}
+	source, err := mod.renderEntrypointSource("deep", ".", "golang:1.26.1-alpine", "deep")
 	require.NoError(t, err)
-	text := string(source)
-	require.NotContains(t, text, "pub resources")
-	require.Contains(t, text, "workspace.glob(pattern: \"**\")")
-	require.Contains(t, text, "--inventory")
-	require.Contains(t, text, "include: selected")
-	require.Contains(t, text, "Dagger.node")
-	require.Contains(t, text, "assembled(callWorkspace)")
-	// A module loaded through another generated client receives its caller's cwd.
-	// Compilation must use the callee's path within the passed workspace.
-	require.Contains(t, text, `withWorkdir(currentModule.sourceSubpath.trimPrefix("/"))`)
-	require.NotContains(t, text, `.withWorkdir(workspace.cwd.trimPrefix("/"))`)
+	require.Contains(t, string(source), `.withDirectory(workspace.cwd + "/../../..", workspace.directory("../../..",
+        include: ["go.mod", "greet/*.go"],`)
 }
 
-func TestRequiredWorkspace(t *testing.T) {
-	for name, arg := range map[string]paramSpec{
-		"missing":            {},
-		"optional":           {name: "ws", optional: true, typeSpec: &parsedObjectTypeReference{name: "Workspace"}},
-		"other type":         {name: "ws", typeSpec: &parsedObjectTypeReference{name: "Directory"}},
-		"authored workspace": {name: "ws", typeSpec: &parsedObjectTypeReference{name: "Workspace", moduleName: "Mine"}},
-		"different name":     {name: "workspace", typeSpec: &parsedObjectTypeReference{name: "Workspace"}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			require.ErrorContains(t, requireWorkspace("Ci.Hello", &funcTypeSpec{argSpecs: []paramSpec{arg}}), "required ws")
-		})
+// The engine loads a module that mentions resources through its resources
+// path, which v1.0.0-beta.17 has.
+func TestEntrypointSourcesAvoidsResources(t *testing.T) {
+	source, err := sourcesFixture().renderEntrypointSource("hello-world", ".", "golang:1.26.1-alpine", "hello_world")
+	require.NoError(t, err)
+	require.NotContains(t, string(source), "resources")
+}
+
+func TestExposesModuleContext(t *testing.T) {
+	schema := func(fields ...string) *introspection.Schema {
+		currentModule := &introspection.Type{Name: "CurrentModule"}
+		for _, name := range fields {
+			currentModule.Fields = append(currentModule.Fields, &introspection.Field{Name: name})
+		}
+		return &introspection.Schema{Types: introspection.Types{{Name: "Query"}, currentModule}}
 	}
-	require.NoError(t, requireWorkspace("Ci.Hello", &funcTypeSpec{argSpecs: []paramSpec{{name: "ws", typeSpec: &parsedObjectTypeReference{name: "Workspace"}}}}))
+	require.True(t, exposesModuleContext(schema("source", "contextDirectory", "sourceSubpath")))
+	require.False(t, exposesModuleContext(schema("source", "contextDirectory")))
+	require.False(t, exposesModuleContext(schema("source", "sourceSubpath")))
+	require.False(t, exposesModuleContext(&introspection.Schema{Types: introspection.Types{{Name: "Query"}}}))
 }
